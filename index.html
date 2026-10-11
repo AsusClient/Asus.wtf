@@ -483,3 +483,128 @@ const toast=document.getElementById('toast');let toastTimer;function showToast(m
 </script>
 </body>
 </html>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(() => {
+  const SUPABASE_URL = 'https://qznvjfkzvygwqtynqlkr.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_FErWDKfdtFgItyC8y8uezQ_0dYDSstZ';
+
+  const client = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
+
+  const form = document.getElementById('authForm');
+  const modal = document.getElementById('authModal');
+  const submit = document.getElementById('authSubmit');
+  const note = document.querySelector('.auth-demo-note');
+  const loginBtn = document.getElementById('loginBtn');
+
+  function message(text, error = false) {
+    note.textContent = text;
+    note.style.color = error ? '#ffb4c0' : '#d8b4fe';
+  }
+
+  async function refreshLogin() {
+    const { data } = await client.auth.getSession();
+    if (loginBtn) {
+      loginBtn.textContent = data.session ? 'Sign out' : 'Log in';
+    }
+  }
+
+  if (loginBtn) {
+    loginBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const { data } = await client.auth.getSession();
+
+      if (data.session) {
+        const { error } = await client.auth.signOut();
+        if (error) message(error.message, true);
+        else {
+          message('Signed out.');
+          refreshLogin();
+        }
+      } else {
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+    }, true);
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    if (submit.disabled) return;
+
+    const mode = document.querySelector(
+      '[data-auth-mode].active'
+    )?.dataset.authMode || 'login';
+
+    const email = form.elements.email.value.trim();
+    const password = form.elements.password.value;
+
+    if (
+      mode === 'register' &&
+      password !== form.elements.confirmPassword.value
+    ) {
+      message('Your passwords do not match.', true);
+      return;
+    }
+
+    submit.disabled = true;
+    submit.textContent =
+      mode === 'register' ? 'Creating account…' : 'Signing in…';
+    message('Connecting to the account service…');
+
+    let timer;
+
+    try {
+      const request = mode === 'register'
+        ? client.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo:
+                window.location.origin + window.location.pathname
+            }
+          })
+        : client.auth.signInWithPassword({ email, password });
+
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(
+          new Error('Request timed out. Check your connection and Supabase settings.')
+        ), 15000);
+      });
+
+      const { data, error } = await Promise.race([request, timeout]);
+      if (error) throw error;
+
+      modal.classList.remove('open');
+      document.body.style.overflow = '';
+
+      if (mode === 'register' && !data.session) {
+        message('Account request received! Check your email to confirm your account.');
+      } else {
+        message(mode === 'register'
+          ? 'Account created successfully!'
+          : 'Logged in successfully!');
+      }
+
+      await refreshLogin();
+    } catch (error) {
+      message(error.message || 'Something went wrong. Try again.', true);
+    } finally {
+      clearTimeout(timer);
+      submit.disabled = false;
+      submit.innerHTML =
+        (mode === 'register' ? 'Create account' : 'Log in') + ' <span>↗</span>';
+    }
+  }, true);
+
+  refreshLogin();
+})();
+</script>
